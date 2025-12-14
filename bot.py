@@ -18,8 +18,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
 # Получаем токены из переменных окружения
-BOT_TOKEN = os.getenv("BOT_TOKEN", "1739871606:AAExrRjrx6ikf1ZVOBHY0NpNdE6PU8UukIA")
-NANO_API_KEY = os.getenv("NANO_API_KEY", "104fd7bddfdad824400625c449141c16")
+21
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7757773618:AAHs9G4WaSRCHBHfPuQRIMNwoU6Y_JWoMc0")NANO_API_KEY = os.getenv("NANO_API_KEY", "104fd7bddfdad824400625c449141c16")
 
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
