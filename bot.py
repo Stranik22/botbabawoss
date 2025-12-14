@@ -55,7 +55,7 @@ async def generate_image(prompt: str, image_data: bytes = None) -> str:
     }
     
     async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=data, headers=headers, timeout=120) as response:
+        async with session.post(url, json=data, headers=headers, timeout=30) as response:
             if response.status == 200:
                 result = await response.json()
                 return result['data'][0]['url']
