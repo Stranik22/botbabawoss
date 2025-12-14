@@ -1,0 +1,264 @@
+import asyncio
+import logging
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+import aiohttp
+import os
+from io import BytesIO
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+
+# Токен бота (замените на свой)
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+# API ключ Nano Banana Pro
+NANO_API_KEY = "104fd7bddfdad824400625c449141c16"
+
+bot = Bot(token=BOT_TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
+
+# Состояния FSM
+class FurnitureStates(StatesGroup):
+    waiting_prompt = State()
+    waiting_furniture_edit = State()
+    waiting_room_photo = State()
+
+# Предустановленные промты
+FURNITURE_PROMPT = """Преобразуй это фото в профессиональную каталожную визуализацию мебели. Современный минималистичный интерьер, фотореализм, качество 4K. Сохрани композицию, размеры и пропорции шкафов и техники, выровняй перспективу и вертикали фасадов. Сделай ровные матовые фасады без дефектов, аккуратные стыки, реалисточные материалы и текстуры. Добавь теплый мягкий боковой свет слева, естественные мягкие тени. Нейтральные стены и потолок, теплый деревянный пол, чистое окружение без лишних предметов. Стиль — интерьерная рекламная фотосъёмка для каталога мебельной фабрики, широкий угол 24–35 мм, камера на уровне глаз, идеально сбалансированная экспозиция"""
+
+ROOM_INTEGRATION_PROMPT = """Реалистично интегрируй мебель из левого изображения в интерьер правого изображения. Сохрани освещение, перспективу и пропорции комнаты. Мебель должна идеально вписаться в пространство, с правильными тенями и отражениями. Фотореализм, 4K качество."""
+
+async def generate_image(prompt: str, image_data: bytes = None) -> str:
+    """Генерация изображения через Nano Banana Pro API"""
+    url = "https://api.nanobanana.pro/v1/images/generations"
+    
+    data = {
+        "prompt": prompt,
+        "n": 1,
+        "size": "1024x1024",
+        "response_format": "url"
+    }
+    
+    if image_data:
+        data["image"] = image_data
+    
+    headers = {
+        "Authorization": f"Bearer {NANO_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=data, headers=headers) as response:
+            result = await response.json()
+            return result['data'][0]['url']
+
+def get_main_keyboard():
+    """Основная клавиатура"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛋️ Генерация мебели", callback_data="generate_furniture")],
+        [InlineKeyboardButton(text="✏️ Улучшить качество", callback_data="improve_quality")],
+        [InlineKeyboardButton(text="🏠 Добавить в комнату", callback_data="add_to_room")],
+        [InlineKeyboardButton(text="🔄 Новый проект", callback_data="new_project")]
+    ])
+    return keyboard
+
+def get_furniture_keyboard():
+    """Клавиатура для работы с мебелью"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Готово, добавить в комнату", callback_data="furniture_ready")],
+        [InlineKeyboardButton(text="🔄 Перегенерировать", callback_data="regenerate_furniture")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+    ])
+    return keyboard
+
+@dp.message(Command("start"))
+async def start_handler(message: types.Message):
+    await message.answer(
+        "🎨 Добро пожаловать в бот генерации мебели!\n\n"
+        "📋 Как работать:\n"
+        "1️⃣ Прикрепите эскиз мебели (рисунок/фото)\n"
+        "2️⃣ Нажмите 'Генерация мебели' или введите свой промт\n"
+        "3️⃣ Доработайте результат\n"
+        "4️⃣ Прикрепите фото комнаты и нажмите 'Добавить в комнату'",
+        reply_markup=get_main_keyboard()
+    )
+
+@dp.callback_query(F.data == "main_menu")
+async def main_menu(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "🎨 Выберите действие:",
+        reply_markup=get_main_keyboard()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "generate_furniture")
+async def generate_furniture(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(FurnitureStates.waiting_prompt)
+    await state.update_data(stage="furniture")
+    
+    await callback.message.edit_text(
+        "🛋️ Прикрепите эскиз мебели или фото и опишите что нужно создать.\n"
+        "Или нажмите кнопку для автоматической обработки:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✨ Авто-каталог", callback_data="auto_catalog")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="main_menu")]
+        ])
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "auto_catalog")
+async def auto_catalog(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    
+    if 'photo' not in data:
+        await callback.answer("Сначала прикрепите фото мебели!", show_alert=True)
+        return
+    
+    photo_bytes = data['photo']
+    prompt = FURNITURE_PROMPT
+    
+    await callback.message.edit_text("🎨 Генерирую профессиональную визуализацию...")
+    
+    try:
+        image_url = await generate_image(prompt, photo_bytes)
+        
+        await state.update_data(
+            furniture_image=image_url,
+            current_prompt=prompt
+        )
+        
+        await callback.message.answer_photo(
+            image_url,
+            caption="✅ Мебель готова!\nЧто дальше?",
+            reply_markup=get_furniture_keyboard()
+        )
+    except Exception as e:
+        await callback.message.answer("❌ Ошибка генерации. Попробуйте еще раз.")
+    
+    await callback.answer()
+
+@dp.message(FurnitureStates.waiting_prompt)
+async def process_furniture_prompt(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    
+    photo_bytes = None
+    custom_prompt = message.text
+    
+    # Проверяем наличие фото
+    if message.photo:
+        photo = message.photo[-1]
+        photo_bytes = await bot.download_file(photo.file_id)
+        photo_bytes = photo_bytes.read()
+    
+    await state.update_data(
+        photo=photo_bytes,
+        custom_prompt=custom_prompt
+    )
+    
+    prompt = custom_prompt or FURNITURE_PROMPT
+    
+    await message.answer("🎨 Генерирую мебель...")
+    
+    try:
+        image_url = await generate_image(prompt, photo_bytes)
+        
+        await state.update_data(
+            furniture_image=image_url,
+            current_prompt=prompt
+        )
+        
+        await message.answer_photo(
+            image_url,
+            caption="✅ Мебель сгенерирована!\nЧто дальше?",
+            reply_markup=get_furniture_keyboard()
+        )
+    except Exception as e:
+        await message.answer("❌ Ошибка генерации. Проверьте промт и фото.")
+
+@dp.callback_query(F.data == "furniture_ready")
+async def furniture_ready(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(FurnitureStates.waiting_room_photo)
+    await callback.message.edit_text(
+        "🏠 Отлично! Теперь прикрепите фото комнаты, куда нужно встроить мебель.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="main_menu")]
+        ])
+    )
+    await callback.answer()
+
+@dp.message(FurnitureStates.waiting_room_photo)
+async def process_room_photo(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    
+    if not message.photo:
+        await message.answer("Пожалуйста, прикрепите фото комнаты!")
+        return
+    
+    room_photo = message.photo[-1]
+    room_bytes = await bot.download_file(room_photo.file_id)
+    room_bytes = room_bytes.read()
+    
+    furniture_url = data.get('furniture_image')
+    
+    await message.answer("🏠 Интегрирую мебель в интерьер...")
+    
+    try:
+        # Загружаем мебельное изображение
+        async with aiohttp.ClientSession() as session:
+            async with session.get(furniture_url) as resp:
+                furniture_bytes = await resp.read()
+        
+        final_prompt = ROOM_INTEGRATION_PROMPT
+        
+        final_image_url = await generate_image(final_prompt, room_bytes)
+        
+        await message.answer_photo(
+            final_image_url,
+            caption="🎉 Готовый результат! Мебель идеально вписана в интерьер клиента.",
+            reply_markup=get_main_keyboard()
+        )
+        
+        await state.clear()
+        
+    except Exception as e:
+        await message.answer("❌ Ошибка интеграции. Попробуйте другую комнату.")
+
+@dp.callback_query(F.data == "regenerate_furniture")
+async def regenerate_furniture(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    prompt = data.get('current_prompt', FURNITURE_PROMPT)
+    
+    await callback.message.edit_caption(
+        caption="🔄 Перегенерирую мебель...",
+        reply_markup=None
+    )
+    
+    try:
+        image_url = await generate_image(prompt)
+        await state.update_data(furniture_image=image_url)
+        
+        await callback.message.edit_caption(
+            caption="✅ Новая версия готова!\nЧто дальше?",
+            reply_markup=get_furniture_keyboard()
+        )
+        await callback.message.delete()
+        await callback.message.answer_photo(
+            image_url,
+            caption="✅ Новая версия готова!\nЧто дальше?",
+            reply_markup=get_furniture_keyboard()
+        )
+    except Exception:
+        await callback.message.answer("❌ Ошибка перегенерации.")
+    
+    await callback.answer()
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
