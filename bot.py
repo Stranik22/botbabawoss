@@ -10,13 +10,16 @@ import aiohttp
 import os
 from io import BytesIO
 import base64
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# ⚠️ ОБЯЗАТЕЛЬНО ЗАМЕНИТЕ НА СВОЙ ТОКЕН
-BOT_TOKEN = "1739871606:AAExrRjrx6ikf1ZVOBHY0NpNdE6PU8UukIA"  
-NANO_API_KEY = "104fd7bddfdad824400625c449141c16"
+# Получаем токены из переменных окружения
+BOT_TOKEN = os.getenv("BOT_TOKEN", "1739871606:AAExrRjrx6ikf1ZVOBHY0NpNdE6PU8UukIA")
+NANO_API_KEY = os.getenv("NANO_API_KEY", "104fd7bddfdad824400625c449141c16")
 
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
@@ -34,39 +37,108 @@ FURNITURE_PROMPT = """Преобразуй это фото в профессио
 ROOM_INTEGRATION_PROMPT = """Реалистично интегрируй мебель из предыдущего результата в интерьер этой комнаты. Сохрани освещение, перспективу и пропорции комнаты. Мебель должна идеально вписаться в пространство, с правильными тенями и отражениями. Фотореализм, 4K качество, профессиональная визуализация."""
 
 async def generate_image(prompt: str, image_data: bytes = None) -> str:
-    """Генерация изображения через Nano Banana Pro API"""
-    url = "https://api.nanobanana.pro/v1/images/generations"
+    """Генерация изображения через Kie Nano Banana Pro API"""
     
-    data = {
-        "prompt": prompt,
-        "n": 1,
-        "size": "1024x1024",
-        "response_format": "url"
+    # Правильный URL для Kie API
+    create_task_url = "https://api.kie.ai/api/v1/jobs/createTask"
+    
+    # Правильная структура payload для Kie
+    payload = {
+        "model": "nano-banana-pro",
+        "input": {
+            "prompt": prompt
+        }
     }
     
+    # Если есть изображение для image-to-image генерации
     if image_data:
-        # Конвертируем bytes в base64 для API
         image_b64 = base64.b64encode(image_data).decode('utf-8')
-        data["image"] = f"data:image/jpeg;base64,{image_b64}"
+        payload["input"]["image_input"] = f"data:image/jpeg;base64,{image_b64}"
     
     headers = {
         "Authorization": f"Bearer {NANO_API_KEY}",
         "Content-Type": "application/json"
     }
     
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=data, headers=headers, timeout=30) as response:
-            if response.status == 200:
+    try:
+        # 1️⃣ Создаём task
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                create_task_url, 
+                json=payload, 
+                headers=headers, 
+                timeout=30
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logging.error(f"API Error {response.status}: {error_text}")
+                    raise Exception(f"API Error: {response.status}")
+                
                 result = await response.json()
-                return result['data'][0]['url']
-            else:
-                logging.error(f"API Error: {await response.text()}")
-                raise Exception("Ошибка генерации изображения")
+                
+                # Проверяем успешность
+                if result.get("code") != 200:
+                    logging.error(f"API returned error: {result}")
+                    raise Exception(f"API Error: {result.get('message', 'Unknown error')}")
+                
+                task_id = result['data']['taskId']
+                logging.info(f"Task created: {task_id}")
+        
+        # 2️⃣ Получаем результат через polling
+        query_url = f"https://api.kie.ai/api/v1/jobs/queryTask?taskId={task_id}"
+        max_attempts = 30  # макс 30 попыток * 2 сек = 60 секунд
+        
+        for attempt in range(max_attempts):
+            await asyncio.sleep(2)  # Ждём 2 секунды перед каждым запросом
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    query_url,
+                    headers=headers,
+                    timeout=10
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        
+                        # Проверяем статус
+                        if result.get("code") == 200:
+                            data = result.get('data', {})
+                            
+                            # Успешно завершено
+                            if data.get('taskStatus') == 'completed':
+                                image_url = data.get('taskResult', {}).get('image_url')
+                                if image_url:
+                                    logging.info(f"Image generated: {image_url}")
+                                    return image_url
+                                else:
+                                    raise Exception("No image URL in response")
+                            
+                            # Всё ещё обрабатывается
+                            elif data.get('taskStatus') in ['pending', 'processing']:
+                                logging.info(f"Attempt {attempt + 1}: Task still processing...")
+                                continue
+                            
+                            # Ошибка обработки
+                            elif data.get('taskStatus') == 'failed':
+                                error_msg = data.get('taskResult', {}).get('error', 'Unknown error')
+                                raise Exception(f"Task failed: {error_msg}")
+                        else:
+                            logging.error(f"Query failed: {result}")
+                            raise Exception(f"Query error: {result.get('message')}")
+        
+        raise Exception("Task processing timeout (60s)")
+        
+    except asyncio.TimeoutError:
+        logging.error("API request timeout")
+        raise Exception("API timeout - сервер не отвечает")
+    except Exception as e:
+        logging.error(f"Image generation error: {str(e)}")
+        raise
 
 def get_main_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🛋️ Генерация мебели", callback_data="generate_furniture")],
-        [InlineKeyboardButton(text="📸 Улучшить качество", callback_data="improve_quality")],
+        [InlineKeyboardButton(text="📋 Генерация мебели", callback_data="generate_furniture")],
+        [InlineKeyboardButton(text="📈 Улучшить качество", callback_data="improve_quality")],
         [InlineKeyboardButton(text="🏠 Добавить в комнату", callback_data="add_to_room")],
         [InlineKeyboardButton(text="🔄 Новый проект", callback_data="new_project")]
     ])
@@ -123,14 +195,9 @@ async def process_furniture_photo(message: types.Message, state: FSMContext):
     if not message.photo:
         await message.answer("❌ Прикрепите фото эскиза!")
         return
-
-        
-    # Отправляем подтверждение получения фото
-    await message.answer("⏳ Получил фото, обрабатываю...\n\n✨ Выберите действие ниже")
-        
-    # Сохраняем фото
     
-    # Сохраняем фото
+    await message.answer("⏳ Получил фото, обрабатываю...\n\n✨ Выберите действие ниже")
+    
     photo = message.photo[-1]
     photo_bytes = await bot.download_file(photo.file_id)
     photo_bytes = photo_bytes.read()
@@ -195,9 +262,8 @@ async def process_room_photo(message: types.Message, state: FSMContext):
     if not message.photo:
         await message.answer("❌ Прикрепите фото комнаты!")
         return
-        
+    
     await message.answer("✅ Фото комнаты получено!")
-    await state.set_state(None)
     
     data = await state.get_data()
     furniture_image = data.get('current_image')
@@ -214,7 +280,7 @@ async def process_room_photo(message: types.Message, state: FSMContext):
         await message.answer_photo(
             photo=final_image_url,
             caption="🎊 **ГОТОВО!** Мебель в интерьере клиента\n\n"
-                   "🔄 Нажмите 'Новый проект' для следующего заказа",
+            "🔄 Нажмите 'Новый проект' для следующего заказа",
             reply_markup=get_main_keyboard(),
             parse_mode="Markdown"
         )
