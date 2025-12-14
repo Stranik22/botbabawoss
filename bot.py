@@ -189,6 +189,9 @@ async def process_room_photo(message: types.Message, state: FSMContext):
     if not message.photo:
         await message.answer("❌ Прикрепите фото комнаты!")
         return
+        
+    await message.answer("✅ Фото комнаты получено!")
+    await state.set_state(None)
     
     data = await state.get_data()
     furniture_image = data.get('current_image')
