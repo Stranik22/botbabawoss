@@ -123,6 +123,12 @@ async def process_furniture_photo(message: types.Message, state: FSMContext):
     if not message.photo:
         await message.answer("❌ Прикрепите фото эскиза!")
         return
+
+        
+    # Отправляем подтверждение получения фото
+    await message.answer("⏳ Получил фото, обрабатываю...\n\n✨ Выберите действие ниже")
+        
+    # Сохраняем фото
     
     # Сохраняем фото
     photo = message.photo[-1]
