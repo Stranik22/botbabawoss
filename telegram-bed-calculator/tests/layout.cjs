@@ -12,7 +12,8 @@ const palettes={light:{bg:'#ffffff',text:'#171717',hint:'#686868',button:'#3390e
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});const errors=[],measurements=[],failures=[];
  try{
-  for(const [theme,p] of Object.entries(palettes))for(const width of [200,240,280,320,360,430,600])for(const state of states){
+  for(const [theme,p] of Object.entries(palettes))for(const width of [200,240,280,320,360,430,600])for(const original of states)for(const quantity of [2,10]){
+   const state={...original,n:quantity,p:quantity===10?'499 990 ₽':original.p,d:original.d.replace('2 шт.',quantity+' шт.')};
    const page=await browser.newPage({viewport:{width,height:1000},colorScheme:theme});
    page.on('pageerror',e=>errors.push(String(e)));
    const inject='<style>:root{--tg-theme-bg-color:'+p.bg+';--tg-theme-text-color:'+p.text+';--tg-theme-hint-color:'+p.hint+';--tg-theme-button-color:'+p.button+';--tg-theme-button-text-color:'+p.buttonText+';--tg-theme-secondary-bg-color:'+p.secondary+';--tg-theme-section-separator-color:'+p.line+'}body{background:var(--tg-theme-bg-color)}</style><script>window.TelegramWidget={chatData:JSON.stringify('+JSON.stringify(state)+'),onEvent(){},ready(){},request(){return Promise.reject({code:"TEST"})},openLink(){}};</script>';
