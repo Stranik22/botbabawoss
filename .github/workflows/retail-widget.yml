@@ -1,0 +1,40 @@
+name: Telegram bed widget
+on:
+  push:
+    branches: ['codex/redbeards-widget-*']
+    paths: ['telegram-bed-calculator/**', '.github/workflows/retail-widget.yml']
+  pull_request:
+    paths: ['telegram-bed-calculator/**', '.github/workflows/retail-widget.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  widget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Interaction tests
+        run: node --test telegram-bed-calculator/tests/widget.test.cjs
+      - name: Telegram payload limits
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import zlib
+          html=Path('telegram-bed-calculator/widget.html').read_bytes()
+          compressed=zlib.compress(html,9)
+          assert len(html)<=32768
+          assert len(compressed)<=4096
+          print('Widget size:',len(html),'UTF-8 bytes;',len(compressed),'zlib bytes')
+          PY
+      - name: Install isolated browser tests
+        run: |
+          npm install --no-save --prefix /tmp/redbeards-widget-test playwright@1.56.1
+          /tmp/redbeards-widget-test/node_modules/.bin/playwright install --with-deps chromium
+      - name: Light and dark layout sweep
+        env:
+          NODE_PATH: /tmp/redbeards-widget-test/node_modules
+        run: node telegram-bed-calculator/tests/layout.cjs
