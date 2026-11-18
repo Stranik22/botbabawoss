@@ -23,6 +23,9 @@ jobs:
         run: |
           php -l telegram-bed-calculator/tools/inspect-shop-template.php
           php telegram-bed-calculator/tests/inspect-methods.php
+          php -l telegram-bed-calculator/server/WidgetEngine.php
+          php -l telegram-bed-calculator/server/SessionStore.php
+          php telegram-bed-calculator/tests/server.php
       - name: Telegram payload limits
         run: |
           python3 - <<'PY'

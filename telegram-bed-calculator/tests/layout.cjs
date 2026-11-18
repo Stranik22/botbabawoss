@@ -1,7 +1,7 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {chromium}=require('playwright');
 const html=fs.readFileSync(path.join(__dirname,'../widget.html'),'utf8');
-const base={v:1,r:1,s:0,q:0,t:'Модель и размер',p:'70 800 ₽',d:'Каретная стяжка · 160×200 · 2 шт.',f:'Bavaro 26 · Чёрный',u:'https://redbeards.ru/hotel-beds/telegram-checkout.php?c=7.160.B.26.1.1.1.2',g:[]};
+const base={v:1,r:1,s:0,n:2,q:0,t:'Модель и размер',p:'70 800 ₽',d:'Каретная стяжка · 160×200 · 2 шт.',f:'Bavaro 26 · Чёрный',u:'https://redbeards.ru/hotel-beds/telegram-checkout.php?c=7.160.B.26.1.1.1.2',g:[]};
 const states=[
  {...base,g:[['Модель',[['Линии','m3',0],['Геометрия','m1',0],['Каретная стяжка','m7',1],['Линии с кантом','m0',0]]],['Спальное место, см',[90,120,140,160,180,200].map(s=>[String(s),'s'+s,s===160]),'sizes'],['Количество',[['−','q1',0],['2 шт.','noop',1,null,1],['+','q3',0]],'sizes']]},
  {...base,s:1,t:'Ткань и цвет',g:[['Коллекция',[['Madera','fM',0],['Bavaro · +1 500 ₽','fB',1]]],['Bavaro 26 · Чёрный',[['20','c20',0,'#a8a8a8'],['22','c22',0,'#999999'],['23','c23',0,'#555555'],['28','c28',0,'#494040'],['26','c26',1,'#292929'],['2','c2',0,'#eeeeee'],['3','c3',0,'#d2c5ba'],['37','c37',0,'#bcaa95']],'colors'],['Палитра',[['←','p1',0],['3 из 4','noop',0,null,1],['→','p3',0]],'sizes']]},

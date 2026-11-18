@@ -16,6 +16,7 @@ Delivery, contact details, consent and acquiring use the existing shop checkout.
 
 - `v:1`, `r`: increasing positive revision, `s`: screen 0–2.
 - `t,p,d,f`: heading, formatted price, selected bed summary and fabric summary.
+- `n`: number of beds, 1–10.
 - `q:1` when a mattress requires a quote; otherwise 0.
 - `g`: groups `[heading, options, layout?]`; an option is
   `[label, action, selected, hexColour?, disabled?]`.
@@ -50,3 +51,5 @@ adding these source files.
 Python zlib level 9 must compress widget.html to no more than 4096 bytes.
 The plain UTF-8 document must not exceed 32768 bytes; every data snapshot must
 fit 1024 bytes. Supported viewport width is 200–600 pixels, with no scrolling.
+
+The server state machine receives a read-only canonical price adapter; option labels derive their order-wide deltas from that same adapter. SessionStore uses a separate SQLite database, binds private chat/user/message, rejects stale revisions, and deduplicates query IDs. No production price list is copied into the module. Live shop adapter, webhook transport and checkout entry point remain to be connected after guarded shop inspection.
