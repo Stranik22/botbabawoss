@@ -70,3 +70,8 @@ test('unsupported state fails safely and does not expose checkout',()=>{
 test('mattress quote is distinguished from a final payable amount',()=>{
  const b=boot(state(1,2,1));assert.equal(b.nodes.totalLabel.textContent,'Известная часть');assert.equal(b.nodes.next.textContent,'Запросить расчёт');
 });
+
+test('missing server session offers restart without changing the confirmed choice',async()=>{
+ const b=boot();b.nodes.next.click();b.pending[0].resolve({result:'{"error":"restart"}'});await tick();
+ assert.equal(b.nodes.price.textContent,'17 000 ₽');assert.match(b.nodes.status.textContent,/start/);assert.equal(b.nodes.next.disabled,false);
+});

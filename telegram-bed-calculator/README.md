@@ -53,3 +53,11 @@ The plain UTF-8 document must not exceed 32768 bytes; every data snapshot must
 fit 1024 bytes. Supported viewport width is 200–600 pixels, with no scrolling.
 
 The server state machine receives a read-only canonical price adapter; option labels derive their order-wide deltas from that same adapter. SessionStore uses a separate SQLite database, binds private chat/user/message, rejects stale revisions, and deduplicates query IDs. No production price list is copied into the module. Live shop adapter, webhook transport and checkout entry point remain to be connected after guarded shop inspection.
+
+## Server file placement
+
+Private module files, widget.html and bootstrap.php belong in /admin/redbeards-client-bot outside the document root. The bot token and webhookSecret live only in private settings.json. Public wrappers are quiz/telegram-widget-webhook.php and hotel-beds/telegram-checkout.php. A verified bootstrap.php must supply the canonical shop price adapter, current model/fabric metadata, a private SQLite SessionStore and the configured controller. It is intentionally not generated from guessed shop method names. The checkout wrapper preserves configuration through the existing rb-config-v2 browser entry contract; it creates no order or payment. Verify that contract against the currently installed storefront before enabling the bot.
+
+WebhookController authenticates before JSON decoding, answers widget queries before slow image/message requests, and handles expired/repeated delivery without duplicating photos. Incoming private messages/resume callbacks use short SQLite processing leases. TelegramApi accepts only the retail bot identity and never prints credentials. Public wrappers must be enabled only after bootstrap, existing shop compatibility and live server probes pass.
+
+The guarded inspection template reads only PHP source, the public product catalogue and storefront code (configuration storage key/fabric metadata). It never reads acquiring settings or customer databases, refuses to run with its placeholder setup hash, authenticates a one-time setup key, and removes itself after a successful report.

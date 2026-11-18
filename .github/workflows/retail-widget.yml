@@ -26,6 +26,11 @@ jobs:
           php -l telegram-bed-calculator/server/WidgetEngine.php
           php -l telegram-bed-calculator/server/SessionStore.php
           php telegram-bed-calculator/tests/server.php
+          php -l telegram-bed-calculator/server/TelegramApi.php
+          php -l telegram-bed-calculator/server/WebhookController.php
+          php -l telegram-bed-calculator/public/telegram-widget-webhook.php
+          php -l telegram-bed-calculator/public/telegram-checkout.php
+          php telegram-bed-calculator/tests/controller.php
       - name: Telegram payload limits
         run: |
           python3 - <<'PY'

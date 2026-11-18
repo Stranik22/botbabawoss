@@ -16,6 +16,35 @@ final class SessionStore {
         $db->exec('CREATE TABLE IF NOT EXISTS widget_queries (
             query_id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
             message_id INTEGER NOT NULL, action TEXT NOT NULL, received_at INTEGER NOT NULL)');
+        $db->exec("CREATE TABLE IF NOT EXISTS widget_message_updates (
+            update_id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL,
+            state TEXT NOT NULL, lease TEXT NOT NULL, lease_until INTEGER NOT NULL, received_at INTEGER NOT NULL)");
+    }
+
+    /** A short lease prevents concurrent retries from sending duplicate welcomes. */
+    public function claimMessage(int $update, int $chat, int $user): ?string {
+        if ($update < 0 || $chat <= 0 || $chat !== $user) throw new RuntimeException('Invalid private update.');
+        $this->db->exec('BEGIN IMMEDIATE');
+        try {
+            $q=$this->db->prepare('SELECT * FROM widget_message_updates WHERE update_id=?');$q->execute([$update]);$old=$q->fetch(PDO::FETCH_ASSOC);
+            if ($old && (int)$old['chat_id']!==$chat) throw new RuntimeException('Update is not available.');
+            if ($old && $old['state']==='done') { $this->db->exec('COMMIT');return null; }
+            if ($old && (int)$old['lease_until']>time()) throw new RuntimeException('Update is already being processed.');
+            $lease=bin2hex(random_bytes(16));
+            $q=$this->db->prepare("INSERT INTO widget_message_updates(update_id,chat_id,state,lease,lease_until,received_at)
+                VALUES(?,?,'working',?,?,?) ON CONFLICT(update_id) DO UPDATE SET state='working',lease=excluded.lease,lease_until=excluded.lease_until");
+            $q->execute([$update,$chat,$lease,time()+60,time()]);$this->db->exec('COMMIT');return $lease;
+        } catch (Throwable $e) { $this->db->exec('ROLLBACK');throw $e; }
+    }
+
+    public function completeMessage(int $update,string $lease): void {
+        $q=$this->db->prepare("UPDATE widget_message_updates SET state='done',lease='',lease_until=0 WHERE update_id=? AND lease=? AND state='working'");
+        $q->execute([$update,$lease]);
+        if ($q->rowCount()!==1) throw new RuntimeException('Update lease expired.');
+    }
+    public function releaseMessage(int $update,string $lease): void {
+        $q=$this->db->prepare("DELETE FROM widget_message_updates WHERE update_id=? AND lease=? AND state='working'");
+        $q->execute([$update,$lease]);
     }
 
     private function context(int $chat, int $user, int $message): void {

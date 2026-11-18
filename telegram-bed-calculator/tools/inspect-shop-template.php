@@ -38,8 +38,8 @@ function rbInspectMethods(string $source): array {
         $methods[$name] = [
             'line' => $tokens[$i][2],
             'bytes' => strlen($code),
-            'source' => preg_match('/price|spec|quote|catalog|normal|validateConfig/i', $name) ? substr($code, 0, 8000) : null,
-            'truncated' => preg_match('/price|spec|quote|catalog|normal|validateConfig/i', $name) && strlen($code) > 8000,
+            'source' => preg_match('/__construct|price|spec|quote|catalog|normal|validateConfig/i', $name) ? substr($code, 0, 8000) : null,
+            'truncated' => preg_match('/__construct|price|spec|quote|catalog|normal|validateConfig/i', $name) && strlen($code) > 8000,
         ];
         $i = $end;
     }
@@ -101,6 +101,21 @@ try {
     }
     $apiPath = $docroot . '/quiz/shop-api.php';
     if (is_readable($apiPath)) $report['apiSource'] = substr(file_get_contents($apiPath), 0, 12000);
+    $indexPath=$docroot.'/hotel-beds/calculator/index.html';
+    if (is_readable($indexPath)) {
+        $index=file_get_contents($indexPath);
+        if (preg_match('~<script[^>]*\bsrc=["\'](/hotel-beds/calculator/assets/[^"\']+\.js)["\']~',$index,$match)) {
+            $asset=realpath($docroot.$match[1]);
+            $prefix=realpath($docroot.'/hotel-beds/calculator/assets');
+            if ($asset!==false && $prefix!==false && str_starts_with($asset,$prefix.DIRECTORY_SEPARATOR) && is_readable($asset)) {
+                $js=file_get_contents($asset);
+                preg_match_all('/rb-config-v[0-9]+/',$js,$keys);
+                $report['storefront']=['asset'=>basename($asset),'sha256'=>hash('sha256',$js),'configurationKeys'=>array_values(array_unique($keys[0]))];
+                $at=strpos($js,'Молочный');
+                if ($at!==false) $report['storefront']['fabricSourceContext']=substr($js,max(0,$at-700),14000);
+            }
+        }
+    }
     $report['probeRemoved'] = unlink(__FILE__);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($report, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
