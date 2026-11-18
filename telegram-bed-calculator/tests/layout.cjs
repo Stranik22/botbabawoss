@@ -10,7 +10,7 @@ const states=[
 ];
 const palettes={light:{bg:'#ffffff',text:'#171717',hint:'#686868',button:'#3390ec',buttonText:'#ffffff',secondary:'#f1f1f4',line:'#d5d5d5'},dark:{bg:'#202020',text:'#eeeeee',hint:'#b8b8b8',button:'#6ab2f2',buttonText:'#111111',secondary:'#303030',line:'#555555'}};
 (async()=>{
- const browser=await chromium.launch({headless:true,args:['--no-sandbox']});const errors=[],measurements=[];
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});const errors=[],measurements=[],failures=[];
  try{
   for(const [theme,p] of Object.entries(palettes))for(const width of [200,240,280,320,360,430,600])for(const state of states){
    const page=await browser.newPage({viewport:{width,height:1000},colorScheme:theme});
@@ -19,12 +19,12 @@ const palettes={light:{bg:'#ffffff',text:'#171717',hint:'#686868',button:'#3390e
    await page.setContent(html.replace('<head>','<head>'+inject));
    const box=await page.locator('main').boundingBox();const metrics=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth,height:document.querySelector('main').getBoundingClientRect().height}));
    measurements.push({theme,width,step:state.s,quote:state.q,...metrics});
-   assert.equal(metrics.overflow,false,'Horizontal clipping '+JSON.stringify(measurements.at(-1)));
-   assert.ok(box.height<=600,'Telegram height limit '+JSON.stringify(measurements.at(-1)));
-   if(width>=320)assert.ok(box.height<=560,'Comfort height '+JSON.stringify(measurements.at(-1)));
-   for(const button of await page.locator('button:visible').all()){const b=await button.boundingBox();assert.ok(b.x>=-1&&b.x+b.width<=width+1,'Button overflow');assert.ok(b.y+b.height<=600,'Clipped button');}
+   if(metrics.overflow)failures.push({reason:'Horizontal clipping',...measurements.at(-1)});
+   if(box.height>600)failures.push({reason:'Telegram height limit',...measurements.at(-1)});
+   if(width>=320&&box.height>560)failures.push({reason:'Comfort height',...measurements.at(-1)});
+   for(const button of await page.locator('button:visible').all()){const b=await button.boundingBox();assert.ok(b.x>=-1&&b.x+b.width<=width+1,'Button overflow');if(b.y+b.height>600)failures.push({reason:'Clipped button',...measurements.at(-1)});}
    await page.close();
   }
-  assert.deepEqual(errors,[]);console.log(JSON.stringify({pass:true,cases:measurements.length,maxHeight:Math.max(...measurements.map(x=>x.height))}));
+  assert.deepEqual(errors,[]);console.log(JSON.stringify({cases:measurements.length,maxHeight:Math.max(...measurements.map(x=>x.height)),failures}));assert.deepEqual(failures,[]);
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

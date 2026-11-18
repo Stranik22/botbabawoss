@@ -19,6 +19,10 @@ jobs:
           node-version: '22'
       - name: Interaction tests
         run: node --test telegram-bed-calculator/tests/widget.test.cjs
+      - name: Read-only shop probe tests
+        run: |
+          php -l telegram-bed-calculator/tools/inspect-shop-template.php
+          php telegram-bed-calculator/tests/inspect-methods.php
       - name: Telegram payload limits
         run: |
           python3 - <<'PY'
